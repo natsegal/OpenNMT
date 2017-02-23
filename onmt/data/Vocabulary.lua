@@ -160,4 +160,36 @@ function Vocabulary.saveFeatures(name, vocabs, prefix)
   end
 end
 
+function Vocabulary.load_w2v(name, vocab, w2v_file, save_prefix)
+  _G.logger:info('Loading ' .. name .. ' external word embeddings from \'' .. w2v_file .. '\'...')
+
+  local w2vReader = onmt.utils.FileReader.new(w2v_file)
+
+  local meta = w2vReader:next()
+  local dim = meta[2]
+  local size = vocab.words:size()
+
+  local w2v = torch.Tensor(size,dim):zero()
+
+  while true do
+    local tokens = w2vReader:next()
+
+    if tokens == nil then
+      break
+    end
+
+    local word = tokens[1]
+    local idx = vocab.words:lookup(word)
+    if (idx ~= nil) then
+      table.remove(tokens, 1)
+      w2v[idx] = torch.Tensor(tokens)
+    end
+  end
+
+  local save_file_name = save_prefix .. '-' .. name .. '-w2v.t7'
+  _G.logger:info('Saving ' .. name .. ' external word embeddings to \'' .. save_file_name .. '\'...')
+  torch.save(save_file_name, w2v, 'binary', false)
+  _G.logger:info('')
+end
+
 return Vocabulary

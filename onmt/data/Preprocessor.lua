@@ -31,7 +31,9 @@ local bitextOptions = {
   {'-src_seq_length',          50,     [[Maximum source sequence length]],
                                        {valid=onmt.utils.ExtendedCmdLine.isUInt}},
   {'-tgt_seq_length',          50,     [[Maximum target sequence length]],
-                                       {valid=onmt.utils.ExtendedCmdLine.isUInt}}
+                                       {valid=onmt.utils.ExtendedCmdLine.isUInt}},
+  {'-src_w2v',                 '',     [[Path to the external pre-trained source word vectors]],
+                                       {valid=onmt.utils.ExtendedCmdLine.fileNullorExists}}
 }
 
 local monotextOptions = {

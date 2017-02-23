@@ -60,6 +60,11 @@ local function main()
                                      function(s) return isValid(s, opt.tgt_seq_length) end)
   end
 
+  if opt.src_w2v:len() > 0 then
+    data.w2v = {}
+    data.w2v.src = Vocabulary.load_w2v('train', data.dicts.src, opt.src_w2v, opt.save_data)
+  end
+
   _G.logger:info('Preparing training data...')
   data.train = {}
   if dataType == 'monotext' then

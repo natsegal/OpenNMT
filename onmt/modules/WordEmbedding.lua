@@ -17,12 +17,14 @@ function WordEmbedding:__init(vocabSize, vecSize, preTrained, fix)
 
   -- If embeddings are given. Initialize them.
   if preTrained and preTrained:len() > 0 then
+    _G.logger:info(' * loading external embeddings from \'' .. preTrained .. '\'...')
     local vecs = torch.load(preTrained)
     self.net.weight:copy(vecs)
   end
 
   self.fix = fix
   if self.fix then
+    _G.logger:info(' * weights for word embeddings will be fixed')
     self.net.gradWeight = nil
   end
 end

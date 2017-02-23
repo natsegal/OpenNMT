@@ -33,7 +33,9 @@ local bitextOptions = {
   {'-tgt_seq_length',          50,     [[Maximum target sequence length]],
                                        {valid=onmt.utils.ExtendedCmdLine.isUInt}},
   {'-src_w2v',                 '',     [[Path to the external pre-trained source word vectors]],
-                                       {valid=onmt.utils.ExtendedCmdLine.fileNullorExists}}
+                                       {valid=onmt.utils.ExtendedCmdLine.fileNullorExists}},
+  {'-src_as_feat',             false,  [[Use source word as additional feature,
+                                       in case we want one of the embeddings fixed and one dynamic.]]}
 }
 
 local monotextOptions = {
@@ -111,8 +113,8 @@ function Preprocessor:makeBilingualData(srcFile, tgtFile, srcDicts, tgtDicts, is
     end
 
     if isValid(srcTokens, self.args.src_seq_length) and isValid(tgtTokens, self.args.tgt_seq_length) then
-      local srcWords, srcFeats = onmt.utils.Features.extract(srcTokens)
-      local tgtWords, tgtFeats = onmt.utils.Features.extract(tgtTokens)
+      local srcWords, srcFeats = onmt.utils.Features.extract(srcTokens, self.args.src_as_feat)
+      local tgtWords, tgtFeats = onmt.utils.Features.extract(tgtTokens, false)
 
       src:insert(srcDicts.words:convertToIdx(srcWords, onmt.Constants.UNK_WORD))
       tgt:insert(tgtDicts.words:convertToIdx(tgtWords,
@@ -201,7 +203,7 @@ function Preprocessor:makeMonolingualData(file, dicts, isValid)
     end
 
     if isValid(tokens, self.args.seq_length) then
-      local words, feats = onmt.utils.Features.extract(tokens)
+      local words, feats = onmt.utils.Features.extract(tokens, false)
 
       dataset:insert(dicts.words:convertToIdx(words, onmt.Constants.UNK_WORD))
 

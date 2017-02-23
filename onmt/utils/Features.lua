@@ -2,7 +2,7 @@
 local tds
 
 --[[ Separate words and features (if any). ]]
-local function extract(tokens)
+local function extract(tokens, word_as_feat)
   local words = {}
   local features = {}
   local numFeatures = nil
@@ -10,6 +10,10 @@ local function extract(tokens)
   for t = 1, #tokens do
     local field = onmt.utils.String.split(tokens[t], '￨')
     local word = field[1]
+
+    if word_as_feat == true then
+      table.insert(field, 1, word)
+    end
 
     if word:len() > 0 then
       table.insert(words, word)

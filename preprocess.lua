@@ -50,14 +50,16 @@ local function main()
                                    opt.src_vocab or opt.vocab,
                                    opt.src_vocab_size or opt.vocab_size,
                                    opt.features_vocabs_prefix,
-                                   function(s) return isValid(s, opt.src_seq_length or opt.seq_length) end)
+                                   function(s) return isValid(s, opt.src_seq_length or opt.seq_length) end,
+				   opt.src_as_feat)
   if dataType ~= 'monotext' then
     data.dicts.tgt = Vocabulary.init('target',
                                      opt.train_tgt,
                                      opt.tgt_vocab,
                                      opt.tgt_vocab_size,
                                      opt.features_vocabs_prefix,
-                                     function(s) return isValid(s, opt.tgt_seq_length) end)
+                                     function(s) return isValid(s, opt.tgt_seq_length) end,
+				     false)
   end
 
   if opt.src_w2v:len() > 0 then

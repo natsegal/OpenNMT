@@ -3,14 +3,14 @@ local path = require('pl.path')
 --[[ Vocabulary management utility functions. ]]
 local Vocabulary = torch.class("Vocabulary")
 
-local function countFeatures(filename)
+local function countFeatures(filename, word_as_feat)
   local reader = onmt.utils.FileReader.new(filename)
-  local _, _, numFeatures = onmt.utils.Features.extract(reader:next())
+  local _, _, numFeatures = onmt.utils.Features.extract(reader:next(), word_as_feat)
   reader:close()
   return numFeatures
 end
 
-function Vocabulary.make(filename, validFunc)
+function Vocabulary.make(filename, validFunc, word_as_feat)
   local wordVocab = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
                                          onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
   local featuresVocabs = {}
@@ -24,7 +24,7 @@ function Vocabulary.make(filename, validFunc)
     end
 
     if validFunc(sent) then
-      local words, features, numFeatures = onmt.utils.Features.extract(sent)
+      local words, features, numFeatures = onmt.utils.Features.extract(sent, word_as_feat)
 
       if #featuresVocabs == 0 and numFeatures > 0 then
         for j = 1, numFeatures do
@@ -52,10 +52,10 @@ function Vocabulary.make(filename, validFunc)
   return wordVocab, featuresVocabs
 end
 
-function Vocabulary.init(name, dataFile, vocabFile, vocabSize, featuresVocabsFiles, validFunc)
+function Vocabulary.init(name, dataFile, vocabFile, vocabSize, featuresVocabsFiles, validFunc, word_as_feat)
   local wordVocab
   local featuresVocabs = {}
-  local numFeatures = countFeatures(dataFile)
+  local numFeatures = countFeatures(dataFile, word_as_feat)
 
   if vocabFile:len() > 0 then
     -- If given, load existing word dictionary.
@@ -94,7 +94,7 @@ function Vocabulary.init(name, dataFile, vocabFile, vocabSize, featuresVocabsFil
   if wordVocab == nil or (#featuresVocabs == 0 and numFeatures > 0) then
     -- If a dictionary is still missing, generate it.
     _G.logger:info('Building ' .. name  .. ' vocabularies...')
-    local genWordVocab, genFeaturesVocabs = Vocabulary.make(dataFile, validFunc)
+    local genWordVocab, genFeaturesVocabs = Vocabulary.make(dataFile, validFunc, word_as_feat)
 
     local originalSizes = { genWordVocab:size() }
     for i = 1, #genFeaturesVocabs do

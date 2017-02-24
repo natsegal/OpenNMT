@@ -183,6 +183,11 @@ function Vocabulary.load_w2v(name, vocab, w2v_file, save_prefix)
     if (idx ~= nil) then
       table.remove(tokens, 1)
       w2v[idx] = torch.Tensor(tokens)
+
+      -- use </s> from w2v to initialize <s> as well
+      if idx == onmt.Constants.EOS then
+        w2v[onmt.Constants.BOS] = torch.Tensor(tokens)
+      end
     end
   end
 

@@ -15,13 +15,7 @@ function WordEmbedding:__init(vocabSize, vecSize, preTrained, fix)
   self.vocabSize = vocabSize
   parent.__init(self, nn.LookupTable(vocabSize, vecSize, onmt.Constants.PAD))
 
-  -- If embeddings are given. Initialize them.
-  if preTrained and preTrained:len() > 0 then
-    _G.logger:info(' * loading external embeddings from \'' .. preTrained .. '\'...')
-    local vecs = torch.load(preTrained)
-    self.net.weight:copy(vecs)
-  end
-
+  self.preTrained = preTrained
   self.fix = fix
   if self.fix then
     _G.logger:info(' * weights for word embeddings will be fixed')
@@ -30,6 +24,12 @@ function WordEmbedding:__init(vocabSize, vecSize, preTrained, fix)
 end
 
 function WordEmbedding:postParametersInitialization()
+  -- If embeddings are given. Initialize them.
+  if self.preTrained and self.preTrained:len() > 0 then
+    local vecs = torch.load(self.preTrained)
+    self.net.weight:copy(vecs)
+  end
+
   self.net.weight[onmt.Constants.PAD]:zero()
 end
 

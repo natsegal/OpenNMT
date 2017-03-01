@@ -18,7 +18,8 @@ local options = {
   {'-pre_filter_factor', 1, [[Optional, set this only if filter is being used. Before
                             applying filters, hypotheses with top `beamSize * preFilterFactor`
                             scores will be considered. If the returned hypotheses voilate filters,
-                            then set this to a larger value to consider more.]]}
+                            then set this to a larger value to consider more.]]},
+  {'-src_as_feat', false,  [[Use source word as additional feature.]]}
 }
 
 function Translator.declareOpts(cmd)
@@ -51,7 +52,7 @@ function Translator:__init(args)
 end
 
 function Translator:buildInput(tokens)
-  local words, features = onmt.utils.Features.extract(tokens)
+  local words, features = onmt.utils.Features.extract(tokens, self.opt.src_as_feat)
 
   local data = {}
   data.words = words

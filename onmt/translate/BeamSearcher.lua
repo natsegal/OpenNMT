@@ -94,6 +94,15 @@ function BeamSearcher:_findKBest(beams, scores)
 
   local t = #beams
   local vocabSize = scores:size(2)
+
+  local lambda = 0.2
+
+  local scores_sorted,scores_order = torch.sort(scores,2,true)
+  local scores_order_typed = scores_order:typeAs(scores)
+  local rank = torch.range(1, scores:size(2)):typeAs(scores_sorted):pow(lambda)
+  scores_sorted:cmul(rank:view(1, scores:size(2)):expand(scores:size()))
+  scores:scatter(2, scores_order, scores_sorted)
+
   local expandedScores, expandedNormScores = beams[t]:_expandScores(scores, self.beamSize)
 
   -- Find top beamSize * preFilterFactor hypotheses.

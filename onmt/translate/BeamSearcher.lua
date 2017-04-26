@@ -95,13 +95,30 @@ function BeamSearcher:_findKBest(beams, scores)
   local t = #beams
   local vocabSize = scores:size(2)
 
+  -- Penalize words coming from the same history
   local lambda = 0.2
 
   local scores_sorted,scores_order = torch.sort(scores,2,true)
-  local scores_order_typed = scores_order:typeAs(scores)
-  local rank = torch.range(1, scores:size(2)):typeAs(scores_sorted):pow(lambda)
-  scores_sorted:cmul(rank:view(1, scores:size(2)):expand(scores:size()))
+  local rank = torch.range(1, vocabSize):typeAs(scores_sorted):pow(lambda)
+  scores_sorted:cmul(rank:view(1, vocabSize):expand(scores:size()))
   scores:scatter(2, scores_order, scores_sorted)
+
+  -- Penalize same words at the same step
+  local mu = 0.3/t
+
+  local b_size = scores:size(1)/self.beamSize
+  local _, scores_order_b = torch.sort(scores:view(b_size, -1), true)
+  local tokens_seen = torch.zeros(b_size, vocabSize)
+
+  for i = 1, math.pow(self.beamSize,2) do
+    local token_idx = torch.fmod(scores_order_b[{{},i}], scores:size(2))
+    token_idx[token_idx:eq(0)] = scores:size(2)
+
+    for j = 1, token_idx:size(1) do
+      tokens_seen[j][token_idx[j]] = tokens_seen[j][token_idx[j]] + 1
+      scores:view(b_size, -1)[j][scores_order_b[j][i]] = scores:view(b_size, -1)[j][scores_order_b[j][i]] * math.pow(tokens_seen[j][token_idx[j]],mu)
+    end
+  end
 
   local expandedScores, expandedNormScores = beams[t]:_expandScores(scores, self.beamSize)
 

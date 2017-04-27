@@ -98,19 +98,22 @@ function BeamSearcher:_findKBest(beams, scores)
   -- Penalize words coming from the same history
   local lambda = 0.2
 
-  local scores_sorted,scores_order = torch.sort(scores,2,true)
-  local rank = torch.range(1, vocabSize):typeAs(scores_sorted):pow(lambda)
-  scores_sorted:cmul(rank:view(1, vocabSize):expand(scores:size()))
+  local top_size = self.beamSize
+
+  local scores_sorted,scores_order = topk(scores,top_size,2,true, true)
+  local rank = torch.range(1, top_size):typeAs(scores_sorted):pow(lambda)
+  scores_sorted:cmul(rank:view(1, top_size):expand(scores:size(1), top_size))
   scores:scatter(2, scores_order, scores_sorted)
 
   -- Penalize same words at the same step
   local mu = 0.3/t
 
   local b_size = scores:size(1)/self.beamSize
-  local _, scores_order_b = torch.sort(scores:view(b_size, -1), true)
+
+  local _, scores_order_b = topk(scores:view(b_size, -1), top_size, 2, true, true)
   local tokens_seen = torch.zeros(b_size, vocabSize)
 
-  for i = 1, math.pow(self.beamSize,2) do
+  for i = 1, top_size do
     local token_idx = torch.fmod(scores_order_b[{{},i}], scores:size(2))
     token_idx[token_idx:eq(0)] = scores:size(2)
 

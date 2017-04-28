@@ -40,12 +40,14 @@ and `finished[b][n].states` describe the n-th best hypothesis for b-th sample
 in the batch.
 
 ]]
-function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial)
+function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, diverse_history, diverse_tokens)
   self.nBest = nBest or 1
   self.beamSize = beamSize or 1
   assert (self.nBest <= self.beamSize)
   self.preFilterFactor = preFilterFactor or 1
   self.keepInitial = keepInitial or false
+  self.diverse_history = diverse_history or 0
+  self.diverse_tokens = diverse_tokens or 0
 
   local beams = {}
   local finished = {}
@@ -96,9 +98,9 @@ function BeamSearcher:_findKBest(beams, scores)
   local vocabSize = scores:size(2)
 
   -- Penalize words coming from the same history
-  local lambda = 0.2
+  local lambda = self.diverse_history
 
-  local top_size = self.beamSize
+  local top_size = math.pow(self.beamSize,2)
 
   local scores_sorted,scores_order = topk(scores,top_size,2,true, true)
   local rank = torch.range(1, top_size):typeAs(scores_sorted):pow(lambda)
@@ -106,7 +108,7 @@ function BeamSearcher:_findKBest(beams, scores)
   scores:scatter(2, scores_order, scores_sorted)
 
   -- Penalize same words at the same step
-  local mu = 0.3/t
+  local mu = self.diverse_tokens/t
 
   local b_size = scores:size(1)/self.beamSize
 

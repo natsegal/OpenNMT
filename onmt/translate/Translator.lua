@@ -60,6 +60,14 @@ local options = {
     [[End of sentence normalization coefficient (gamma). If set to 0, no EOS normalization.]]
   },
   {
+    '-diverse_history', 0.0,
+    [[Beam diversification favoring hypotheses from different histories (previous beams). If set to 0, no diversification.]]
+  },
+  {
+    '-diverse_tokens', 0.0,
+    [[Beam diversification favoring different tokens at each time step. If set to 0, no diversification.]]
+  },
+  {
     '-dump_input_encoding', false,
     [[Instead of generating target tokens conditional on
     the source tokens, we print the representation
@@ -248,7 +256,7 @@ function Translator:translateBatch(batch)
 
   -- Conduct beam search.
   local beamSearcher = onmt.translate.BeamSearcher.new(advancer)
-  local results = beamSearcher:search(self.opt.beam_size, self.opt.n_best, self.opt.pre_filter_factor)
+  local results = beamSearcher:search(self.opt.beam_size, self.opt.n_best, self.opt.pre_filter_factor, self.opt.diverse_history, self.opt.diverse_tokens)
 
   local allHyp = {}
   local allFeats = {}

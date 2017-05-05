@@ -256,7 +256,7 @@ function Translator:translateBatch(batch)
 
   -- Conduct beam search.
   local beamSearcher = onmt.translate.BeamSearcher.new(advancer)
-  local results = beamSearcher:search(self.opt.beam_size, self.opt.n_best, self.opt.pre_filter_factor, self.opt.diverse_history, self.opt.diverse_tokens)
+  local results = beamSearcher:search(self.opt.beam_size, self.opt.n_best, self.opt.pre_filter_factor, false, self.opt.diverse_history, self.opt.diverse_tokens)
 
   local allHyp = {}
   local allFeats = {}

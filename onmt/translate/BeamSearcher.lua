@@ -100,7 +100,7 @@ function BeamSearcher:_findKBest(beams, scores)
   -- Penalize words coming from the same history
   local lambda = self.diverse_history
 
-  local top_size = math.pow(self.beamSize,2)
+  local top_size = self.beamSize
 
   local scores_sorted,scores_order = topk(scores,top_size,2,true, true)
   local rank = torch.range(1, top_size):typeAs(scores_sorted):pow(lambda)

@@ -228,7 +228,8 @@ function Translator:buildData(src, gold)
   local srcData = {}
   srcData.words = {}
   srcData.features = {}
-  srcData.constraints = {}
+  srcData.srcConstraints = {}
+  srcData.tgtConstraints = {}
 
   local goldData
   if gold then
@@ -259,17 +260,20 @@ function Translator:buildData(src, gold)
 
 
 	if self.phraseTable and self.args.lexical_constraints then
-	  local c = {}
-	  for _,w in pairs(src[b].words) do
-	    if (self.phraseTable:contains(w)) then
-	      -- TODO : deal with phrases and source words
-	      local tgt = self.phraseTable:lookup(w)
-	      if (self.dicts.tgt.words:lookup(tgt)) then
-	        table.insert(c, tgt)
+	  local sc = {}
+	  local tc = {}
+	  for sidx,src in pairs(src[b].words) do
+	    if (self.phraseTable:contains(src)) then
+	      -- TODO : deal with phrases
+	      local tgt = self.phraseTable:lookup(src)
+	      if (self.dicts.src.words:lookup(src) and self.dicts.tgt.words:lookup(tgt)) then
+	        table.insert(sc, sidx)
+	        table.insert(tc, tgt)
 	      end
 	    end
 	  end
-	  table.insert(srcData.constraints, self.dicts.tgt.words:convertToIdx(c, onmt.Constants.UNK_WORD))
+	  table.insert(srcData.srcConstraints, torch.IntTensor(sc))
+	  table.insert(srcData.tgtConstraints, self.dicts.tgt.words:convertToIdx(tc, onmt.Constants.UNK_WORD))
 	end
 
       else

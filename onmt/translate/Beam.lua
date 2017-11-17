@@ -191,14 +191,14 @@ function Beam:__init(token, state, params, batchSize, updateConstraints)
   end
   self._state = state
 
-  if updateConstraints and self._state[11] then
+  if updateConstraints and self._state[12] then
     for t=1,self._tokens[#self._tokens]:size(1) do
       local tok = self._tokens[#self._tokens][t]
-      for c=1,self._state[11]:size(2) do
-        if self._state[11][t][c] == tok then
-	  self._state[11][t][c] = 0
-	  break
-	end
+      for c=1,self._state[12]:size(2) do
+        if self._state[12][t][c] == tok then
+          self._state[12][t][c] = 0
+          break
+        end
       end
     end
   end
@@ -405,19 +405,23 @@ end
 -- Expand lexical constraints
 function Beam:_expandUsedConstraints(beamSize, vocabSize)
 
-  local usedConstraintNum, expandedConstraints, expandedConstraintSizes = nil
+  local usedConstraintNum, expandedConstraints, expandedConstraintSizes, unusableConstraints = nil
 
   local constraintNum = 0
 
-  if #self._state > 11 and self._state[11] and self._state[12] then
-    local constraints = self._state[11]
+  if #self._state > 12 and self._state[12] and self._state[13] then
+    local constraints = self._state[12]
     constraintNum = constraints:size(2)
-    local constraintSizes = self._state[12]
+    local constraintSizes = self._state[13]
 
     -- Expand constraints and constraint sizes
     expandedConstraints = constraints:view(self._remaining, beamSize, constraintNum, 1):expand(self._remaining, beamSize, constraintNum, vocabSize):transpose(3,4)
     expandedConstraintSizes = constraintSizes:view(self._remaining,beamSize,1):expand(self._remaining, beamSize, vocabSize):clone()
     usedConstraintNum = expandedConstraintSizes:csub(expandedConstraints:ne(0):sum(4):typeAs(expandedConstraintSizes))
+
+    unusableConstraints = usedConstraintNum:clone():zero()
+
+    local _, maxAttnIdx = self._state[4]:max(2)
 
     -- Update "used constraints" for tokens corresponding to one of the available constraints
     for i=1,self._remaining do
@@ -426,6 +430,15 @@ function Beam:_expandUsedConstraints(beamSize, vocabSize)
         for c=1,constraintNum do
           local cIdx = expandedConstraints[i][j][1][c]
           if cIdx ~= 0 then
+            local cSrc = self._state[11]:view(self._remaining, beamSize, constraintNum)[i][j][c]
+
+            local srcAttnId = maxAttnIdx:view(self._remaining, beamSize)[i][j]
+                              - self._state[6]:max() + self._state[6]:view(self._remaining, beamSize)[i][j]
+
+            if srcAttnId ~= cSrc then
+              unusableConstraints[i][j][cIdx] = 1
+            end
+
             if usedConstraints[cIdx] then -- constraint has already been used
               usedConstraints[cIdx] = usedConstraints[cIdx]+1
             else
@@ -438,7 +451,7 @@ function Beam:_expandUsedConstraints(beamSize, vocabSize)
     end
   end
 
-  return usedConstraintNum, constraintNum
+  return usedConstraintNum, constraintNum, unusableConstraints
 
 end
 

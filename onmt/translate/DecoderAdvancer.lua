@@ -75,7 +75,7 @@ function DecoderAdvancer:initBeam()
 
   -- Define state to be { decoder states, decoder output, context,
   -- attentions, features, sourceSizes, step, cumulated attention probablities, lmStates, lmContext, lexical constraints, lexical constraintSizes }.
-  local state = { self.decStates, nil, self.context, nil, features, sourceSizes, 1, attnProba, self.lmStates, self.lmContext, self.batch.constraints, self.batch.constraintSizes }
+  local state = { self.decStates, nil, self.context, nil, features, sourceSizes, 1, attnProba, self.lmStates, self.lmContext, self.batch.srcConstraints, self.batch.tgtConstraints, self.batch.constraintSizes }
   local params = {}
   params.length_norm = self.length_norm
   params.coverage_norm = self.coverage_norm
@@ -92,8 +92,8 @@ Parameters:
 ]]
 function DecoderAdvancer:update(beam)
   local state = beam:getState()
-  local decStates, decOut, context, _, features, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraints, constraintSizes
-    = table.unpack(state, 1, 12)
+  local decStates, decOut, context, _, features, sourceSizes, t, cumAttnProba, lmStates, lmContext, srcConstraints, tgtConstraints, constraintSizes
+    = table.unpack(state, 1, 13)
 
   local tokens = beam:getTokens()
   local token = tokens[#tokens]
@@ -128,7 +128,7 @@ function DecoderAdvancer:update(beam)
     cumAttnProba = cumAttnProba:add(attention)
   end
 
-  local nextState = {decStates, decOut, context, attention, nil, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraints, constraintSizes}
+  local nextState = {decStates, decOut, context, attention, nil, sourceSizes, t, cumAttnProba, lmStates, lmContext, srcConstraints,tgtConstraints, constraintSizes}
   beam:setState(nextState)
 end
 
@@ -209,11 +209,11 @@ function DecoderAdvancer:filter(beam,considered)
   local pruned = numUnks:gt(self.max_num_unks)
 
   -- In case we use lexical constraints.
-  if beam:getState()[11] then
+  if beam:getState()[12] then
 
     -- Disallow hypotheses that did not consume all of the constraints.
     local finished = tokens[#tokens]:eq(onmt.Constants.EOS)
-    local cNum = beam:getState()[11]:ne(0):sum(2)
+    local cNum = beam:getState()[12]:ne(0):sum(2)
     local unfinishedConstraints = cNum:gt(0)
     pruned:add(torch.cmul(unfinishedConstraints, finished))
 
@@ -221,7 +221,7 @@ function DecoderAdvancer:filter(beam,considered)
     if self.limit_lexical_constraints then
 
       local tok = tokens[#tokens]:view(-1,considered)
-      local availableConstraint = beam:getState()[11]:view(-1, considered, beam:getState()[11]:size(2))
+      local availableConstraint = beam:getState()[12]:view(-1, considered, beam:getState()[12]:size(2))
 
       local isConstraint = tokens[#tokens]:clone():fill(0)
       local constraintNotAvailable = tokens[#tokens]:clone():fill(0)
@@ -229,7 +229,7 @@ function DecoderAdvancer:filter(beam,considered)
       for b=1,tok:size(1) do
         local ob = beam:_getOrigId(b)
         for t=1,tok:size(2) do
-          isConstraint:viewAs(tok)[b][t] = self.batch.constraints[ob]:eq(tok[b][t]):sum()
+          isConstraint:viewAs(tok)[b][t] = self.batch.tgtConstraints[ob]:eq(tok[b][t]):sum()
           constraintNotAvailable:viewAs(tok)[b][t] = availableConstraint[b][t]:ne(tok[b][t]):min()
 	end
       end

@@ -61,8 +61,8 @@ function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial)
   beams[1] = self.advancer:initBeam()
 
   -- If we use lexical constraints, we need as many beams as the number of used constraints
-  if beams[1]:getState()[11] then
-    self.beamSize = self.beamSize * (beams[1]:getState()[11]:size(2)+1)
+  if beams[1]:getState()[12] then
+    self.beamSize = self.beamSize * (beams[1]:getState()[12]:size(2)+1)
   end
 
   local remaining = beams[1]:getRemaining()
@@ -171,7 +171,7 @@ function BeamSearcher:_makeNewBeam(beams, scores)
   local newBeamBackPointer = torch.Tensor()
   local newBeamToken = torch.Tensor()
 
-  local usedConstraintNum, constraintNum = beams[t]:_expandUsedConstraints(self.beamSize, vocabSize)
+  local usedConstraintNum, constraintNum, unusableConstraints = beams[t]:_expandUsedConstraints(self.beamSize, vocabSize)
 
   local maskedScores, maskedNormScores
   if usedConstraintNum then
@@ -192,6 +192,10 @@ function BeamSearcher:_makeNewBeam(beams, scores)
 
       maskedScores:maskedFill(usedConstraintNum:ne(i), -math.huge)
       maskedNormScores:maskedFill(usedConstraintNum:ne(i), -math.huge)
+
+      maskedScores:maskedFill(unusableConstraints:ne(0), -math.huge)
+      maskedNormScores:maskedFill(unusableConstraints:ne(0), -math.huge)
+
     end
 
     -- get kbest scores

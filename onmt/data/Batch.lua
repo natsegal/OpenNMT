@@ -55,11 +55,12 @@ Parameters:
   * `tgt` - 2D table of target batch indices
   * `tgtFeatures` - 2D table of target batch features (opt)
 --]]
-function Batch:__init(src, srcFeatures, tgt, tgtFeatures, constraints)
+function Batch:__init(src, srcFeatures, tgt, tgtFeatures, srcConstraints, tgtConstraints)
   src = src or {}
   srcFeatures = srcFeatures or {}
   tgtFeatures = tgtFeatures or {}
-  constraints = constraints or {}
+  srcConstraints = srcConstraints or {}
+  tgtConstraints = tgtConstraints or {}
 
   if tgt ~= nil then
     assert(#src == #tgt, "source and target must have the same batch size")
@@ -86,9 +87,10 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures, constraints)
 
   -- Create constraint tensors if there are any
   -- batch size x max constraint number per sentence
-  self.cLength, self.cSize = getLength(constraints)
+  self.cLength, self.cSize = getLength(tgtConstraints)
   if self.cLength > 0 then
-    self.constraints = torch.LongTensor(self.size, self.cLength):fill(0)
+    self.srcConstraints = torch.LongTensor(self.size, self.cLength):fill(0)
+    self.tgtConstraints = torch.LongTensor(self.size, self.cLength):fill(0)
     self.constraintSizes = torch.LongTensor(self.size):fill(0)
   end
 
@@ -121,7 +123,9 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures, constraints)
     if self.cLength > 0 and self.cSize[b] > 0 then
       local cWindow = {b, {1, self.cSize[b]}}
 
-      self.constraints[cWindow]:copy(constraints[b])
+      self.srcConstraints[cWindow]:copy(srcConstraints[b])
+      self.tgtConstraints[cWindow]:copy(tgtConstraints[b])
+
       self.constraintSizes[b] = self.cSize[b]
     end
 

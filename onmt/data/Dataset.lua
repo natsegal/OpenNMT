@@ -8,7 +8,8 @@ function Dataset:__init(srcData, tgtData)
 
   self.src = srcData.words or srcData.vectors
   self.srcFeatures = srcData.features
-  self.constraints = srcData.constraints
+  self.srcConstraints = srcData.srcConstraints
+  self.tgtConstraints = srcData.tgtConstraints
 
   if tgtData ~= nil then
     self.tgt = tgtData.words or tgtData.vectors
@@ -93,7 +94,7 @@ function Dataset:getBatch(idx)
   end
 
   if idx == nil or self.batchRange == nil then
-    return onmt.data.Batch.new(self.src, self.srcFeatures, self.tgt, self.tgtFeatures, self.constraints)
+    return onmt.data.Batch.new(self.src, self.srcFeatures, self.tgt, self.tgtFeatures, self.srcConstraints, self.tgtConstraints)
   end
 
   local rangeStart = self.batchRange[idx]["begin"]
@@ -109,7 +110,8 @@ function Dataset:getBatch(idx)
   local srcFeatures = {}
   local tgtFeatures = {}
 
-  local constraints = {}
+  local srcConstraints = {}
+  local tgtConstraints = {}
 
   for i = rangeStart, rangeEnd do
     table.insert(src, self.src[i])
@@ -126,12 +128,15 @@ function Dataset:getBatch(idx)
       end
     end
 
-    if self.constraints and self.constraints[i] then
-      table.insert(constraints, self.constraints[i])
+    if self.srcConstraints and self.srcConstraints[i] then
+      table.insert(srcConstraints, self.srcConstraints[i])
+    end
+    if self.tgtConstraints and self.tgtConstraints[i] then
+      table.insert(tgtConstraints, self.tgtConstraints[i])
     end
   end
 
-  return onmt.data.Batch.new(src, srcFeatures, tgt, tgtFeatures, constraints)
+  return onmt.data.Batch.new(src, srcFeatures, tgt, tgtFeatures, srcConstraints, tgtConstraints)
 end
 
 return Dataset

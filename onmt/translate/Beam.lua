@@ -421,8 +421,6 @@ function Beam:_expandUsedConstraints(beamSize, vocabSize)
 
     unusableConstraints = usedConstraintNum:clone():zero()
 
-    local _, maxAttnIdx = self._state[4]:max(2)
-
     -- Update "used constraints" for tokens corresponding to one of the available constraints
     for i=1,self._remaining do
       for j=1,beamSize do
@@ -432,10 +430,16 @@ function Beam:_expandUsedConstraints(beamSize, vocabSize)
           if cIdx ~= 0 then
             local cSrc = self._state[11]:view(self._remaining, beamSize, constraintNum)[i][j][c]
 
-            local srcAttnId = maxAttnIdx:view(self._remaining, beamSize)[i][j]
-                              - self._state[6]:max() + self._state[6]:view(self._remaining, beamSize)[i][j]
+            local paddedSrcLength = self._state[4]:size(2)
+            local srcLength = self._state[6]:view(self._remaining, beamSize)[i][j]
+            local paddedSrc = paddedSrcLength - srcLength + cSrc
 
-            if srcAttnId ~= cSrc then
+            local attnVector =  self._state[4]:view(self._remaining, beamSize, paddedSrcLength)[i][j]
+
+            local meanAttn = attnVector[{{paddedSrcLength - srcLength + 1, paddedSrcLength}}]:mean()
+            local curAttn = attnVector[paddedSrc]
+
+            if curAttn < meanAttn then
               unusableConstraints[i][j][cIdx] = 1
             end
 

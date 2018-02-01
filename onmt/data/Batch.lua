@@ -88,8 +88,8 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures, constraints)
   -- batch size x max constraint number per sentence
   self.cLength, self.cSize = getLength(constraints)
   if self.cLength > 0 then
-    self.constraints = torch.LongTensor(self.size, self.cLength):fill(0)
-    self.constraintSizes = torch.LongTensor(self.size):fill(0)
+    self.constraints = torch.Tensor(self.size, self.cLength):fill(0)
+    self.constraintSizes = torch.Tensor(self.size):fill(0)
   end
 
   -- Allocate target tensors if defined.

@@ -47,7 +47,7 @@ Returns:
     and `histories[b].scores` save the full beam search history of the b-th sample.
 
 ]]
-function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, vocabMask)
+function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, vocabMask, use_constraints, idx)
 
   self.nBest = nBest or 1
   self.realBeamSize = beamSize or 1
@@ -61,7 +61,7 @@ function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, voca
   local histories = {}
 
   -- Initialize the beam.
-  beams[1] = self.advancer:initBeam()
+  beams[1] = self.advancer:initBeam(use_constraints,idx)
 
   self.gridHeight = (beams[1]:getState()[11] and beams[1]:getState()[11]:size(2)+1) or 1
   self.beamSize = self.realBeamSize * self.gridHeight
@@ -316,7 +316,23 @@ function BeamSearcher:_retrieveHypothesis(beams, batchId, score, tok, bp, t)
       end
     end
   states = statesTemp
-  return {tokens = tokens, states = states, score = score}
+
+  -- Check if the hypothesis respects the constraints
+  local constraint_mismatch = false
+  if self.advancer.batch.constraints then
+    local constraints = self.advancer.batch.constraints[batchId]
+    local constraintSize = self.advancer.batch.constraintSizes[batchId]
+    for c=1,constraintSize do
+      local cNum = constraints:eq(constraints[c]):sum()
+      local hypCNum = onmt.utils.Cuda.convert(torch.Tensor(tokens)):eq(constraints[c]):sum()
+      if cNum ~= hypCNum then
+        constraint_mismatch = true
+        break
+      end
+    end
+  end
+
+  return {tokens = tokens, states = states, score = score, constraint_mismatch = constraint_mismatch}
 end
 
 -- Retrieve the complete beam history of batchId.

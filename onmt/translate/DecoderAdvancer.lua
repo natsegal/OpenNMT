@@ -47,20 +47,51 @@ Returns:
   * `beam` - an `onmt.translate.Beam` object.
 
 --]]
-function DecoderAdvancer:initBeam()
-  local tokens = onmt.utils.Cuda.convert(torch.IntTensor(self.batch.size)):fill(onmt.Constants.BOS)
+function DecoderAdvancer:initBeam(use_constraints,idx)
+
+  local batchSize = (idx and 1) or self.batch.size
+
+  local tokens = onmt.utils.Cuda.convert(torch.IntTensor(batchSize)):fill(onmt.Constants.BOS)
   local features = {}
   if self.dicts then
     for j = 1, #self.dicts.tgt.features do
-      features[j] = onmt.utils.Cuda.convert(torch.IntTensor(self.batch.size):fill(onmt.Constants.EOS))
+      features[j] = onmt.utils.Cuda.convert(torch.IntTensor(batchSize):fill(onmt.Constants.EOS))
     end
   end
   local sourceSizes = onmt.utils.Cuda.convert(self.batch.sourceSize)
-  local attnProba = torch.FloatTensor(self.batch.size, self.context:size(2))
+  local context = self.context
+  local constraints, constraintSizes
+  if use_constraints then
+    constraints = self.batch.constraints
+    constraintSizes = self.batch.constraintSizes
+  end
+  local lmStates = self.lmStates
+  local lmContext = self.lmContext
+  local decStates = {}
+
+  if idx then
+    sourceSizes = sourceSizes:narrow(1,idx,1)
+    context = context:narrow(1,idx,1)
+    for ds=1,#self.decStates do
+      decStates[ds] = self.decStates[ds]:narrow(1,idx,1)
+    end
+    if constraints then
+      constraintSizes = constraintSizes:narrow(1,idx,1)
+      constraints = constraints:narrow(1,idx,1)
+    end
+    if self.lmModel then
+      lmStates = lmStates:narrow(1,idx,1)
+      lmContext = lmContext:narrow(1,idx,1)
+    end
+  else
+    decStates = self.decStates
+  end
+
+  local attnProba = torch.FloatTensor(batchSize, self.context:size(2))
     :fill(0.0001)
     :typeAs(self.context)
   -- Assign maximum attention proba on padding for it to not interfer during coverage normalization.
-  for i = 1, self.batch.size do
+  for i = 1, batchSize do
     local sourceSize = sourceSizes[i]
     if self.batch.sourceLength ~= self.context:size(2) then
       sourceSize = math.ceil(sourceSize / (self.batch.sourceLength / self.context:size(2)))
@@ -73,18 +104,18 @@ function DecoderAdvancer:initBeam()
 
   -- Define state to be { decoder states, decoder output, context,
   -- attentions, features, sourceSizes, step, , lmStates, lmContext, lexical constraints, lexical constraintSizes }.
-  local state = { self.decStates,             -- idx 1  : decoder states
+  local state = { decStates,                  -- idx 1  : decoder states
                   nil,                        -- idx 2  : decoder output
-                  self.context,               -- idx 3  : context
+                  context,                    -- idx 3  : context
                   nil,                        -- idx 4  : attentions
                   features,                   -- idx 5  : features
                   sourceSizes,                -- idx 6  : sourceSizes
                   1,                          -- idx 7  : step
                   attnProba,                  -- idx 8  : cumulated attention probablities
-                  self.lmStates,              -- idx 9  : lmStates
-                  self.lmContext,             -- idx 10 : lmContext
-                  self.batch.constraints,     -- idx 11 : lexical constraints remaining to apply to this node
-                  self.batch.constraintSizes  -- idx 12 : lexical constraints sizes
+                  lmStates,                   -- idx 9  : lmStates
+                  lmContext,                  -- idx 10 : lmContext
+                  constraints,                -- idx 11 : lexical constraints remaining to apply to this node
+                  constraintSizes             -- idx 12 : lexical constraints sizes
   }
 
   local params = {}

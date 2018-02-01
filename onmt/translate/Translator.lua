@@ -56,6 +56,10 @@ local options = {
     [[Force the beam search to reproduce placeholders in the translation.]]
   },
   {
+    '-lazy_constraints', true,
+    [[First translate without constraints. If translation is not consistent with constraints, retranslate individual sentences.]]
+  },
+  {
     '-phrase_table', '',
     [[Path to source-target dictionary to replace `<unk>` tokens.]],
     {
@@ -478,7 +482,9 @@ function Translator:translateBatch(batch)
                                                  self.args.n_best,
                                                  self.args.pre_filter_factor,
                                                  false,
-                                                 self.placeholderMask)
+                                                 self.placeholderMask,
+                                                 batch.constraints and (not self.args.lazy_constraints),
+                                                 idx)
 
   local allHyp = {}
   local allFeats = {}
@@ -491,6 +497,26 @@ function Translator:translateBatch(batch)
     local featsBatch = {}
     local attnBatch = {}
     local scoresBatch = {}
+
+    -- Check if the default translation did a good job with constraints
+    -- If not, retranslate individual sentences using GBS
+    -- TODO : use limit_lexical_constraints again or allow more constraints in the hypothesis
+    if (batch.constraints and self.args.lazy_constraints) then
+      for n = 1, self.args.n_best do
+        if results[b][n].constraint_mismatch then
+          local result, history = beamSearcher:search(self.args.beam_size,
+                                                      self.args.n_best,
+                                                      self.args.pre_filter_factor,
+                                                      false,
+                                                      self.placeholderMask,
+                                                      true,
+                                                      b)
+          results[b] = result[1]
+          histories[b] = history[1]
+          break
+        end
+      end
+    end
 
     for n = 1, self.args.n_best do
       local result = results[b][n]

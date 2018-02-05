@@ -320,14 +320,28 @@ function BeamSearcher:_retrieveHypothesis(beams, batchId, score, tok, bp, t)
   -- Check if the hypothesis respects the constraints
   local constraint_mismatch = false
   if self.advancer.batch.constraints then
-    local constraints = self.advancer.batch.constraints[batchId]
-    local constraintSize = self.advancer.batch.constraintSizes[batchId]
+    local batchIdx = self.advancer.batch_idx or batchId
+    local constraints = self.advancer.batch.constraints[batchIdx]
+    local constraintSize = self.advancer.batch.constraintSizes[batchIdx]
+    local vocabMask = self.vocabMask:clone()
+
     for c=1,constraintSize do
       local cNum = constraints:eq(constraints[c]):sum()
       local hypCNum = onmt.utils.Cuda.convert(torch.Tensor(tokens)):eq(constraints[c]):sum()
       if cNum ~= hypCNum then
         constraint_mismatch = true
         break
+      end
+      vocabMask[constraints[c]] = 0
+    end
+
+    -- For placeholder-type constraints, we also need to check that no constraint that is not relevant for current source is used in the target
+    if (not constraint_mismatch) and vocabMask:eq(1):sum() ~= 0 then
+      for t=1,#tokens do
+        if vocabMask[tokens[t]] ~= 0 then
+	  constraint_mismatch = true
+	  break
+	end
       end
     end
   end

@@ -482,6 +482,7 @@ function Translator:translateBatch(batch)
                                                  self.args.pre_filter_factor,
                                                  false,
                                                  self.placeholderMask,
+                                                 self.args.limit_lexical_constraints,
                                                  batch.constraints and (not self.args.lazy_constraints),
                                                  idx)
 
@@ -508,6 +509,7 @@ function Translator:translateBatch(batch)
                                                       self.args.pre_filter_factor,
                                                       false,
                                                       self.placeholderMask,
+                                                      self.args.limit_lexical_constraints,
                                                       true,
                                                       b)
           results[b] = result[1]

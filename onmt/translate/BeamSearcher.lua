@@ -47,7 +47,7 @@ Returns:
     and `histories[b].scores` save the full beam search history of the b-th sample.
 
 ]]
-function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, vocabMask, use_constraints, idx)
+function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, vocabMask, limit_constraints, use_constraints, idx)
 
   self.nBest = nBest or 1
   self.realBeamSize = beamSize or 1
@@ -55,6 +55,7 @@ function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, voca
   self.preFilterFactor = preFilterFactor or 1
   self.keepInitial = keepInitial or false
   self.vocabMask = vocabMask
+  self.limit_constraints = limit_constraints
 
   local beams = {}
   local finished = {}
@@ -172,16 +173,17 @@ function BeamSearcher:addGridDecodingConstraints(lvl, batchSize, realBeamSize, c
         constraintPenalty[{i, 2, j, {}}]:maskedFill(vocabMask, -math.huge)
       end
       for k = 1, gridConstraints:size(4) do
+        -- all constraints are forbidden for the same level
+        if self.limit_constraints or lvl <= gridConstraintsSize[{i, lvl, j}] then
+          local idxAll = self.advancer.batch.constraints[batchIdx][k]
+          if idxAll > 0 then constraintPenalty[{i, 2, j, idxAll}] = -math.huge end
+        end
         -- cannot use a constraint (not already used)
         if lvl > 1 then
           -- uplevelling
           -- unused constraints are only for uplevelling
           local idxUsed = gridConstraints[{i, lvl-1, j, k}]
           if idxUsed > 0 then constraintPenalty[{i, 1, j, idxUsed}] = 0 end
-
-          -- all constraints are forbidden for the same level
-          local idxAll = self.advancer.batch.constraints[batchIdx][k]
-          if idxAll > 0 then constraintPenalty[{i, 2, j, idxAll}] = -math.huge end
         end
       end
       -- EOS only when no more constraint

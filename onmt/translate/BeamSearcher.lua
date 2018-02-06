@@ -158,7 +158,7 @@ function BeamSearcher:_findKBest(beams, vocabSize, kBest, expandedScores, expand
 
 end
 
-local function addGridDecodingConstraints(lvl, batchSize, realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, vocabMask)
+function BeamSearcher:addGridDecodingConstraints(lvl, batchSize, realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, vocabMask)
   -- TODO: disable all of the placeholder in target vocabulary
   constraintPenalty[{{}, 2, {}, {}}]:fill(0)
   if lvl > 1 then
@@ -166,6 +166,7 @@ local function addGridDecodingConstraints(lvl, batchSize, realBeamSize, constrai
   end
 
   for i = 1, batchSize do
+    local batchIdx = self.advancer.batchIdx or i
     for j = 1, realBeamSize do
       if vocabMask then
         constraintPenalty[{i, 2, j, {}}]:maskedFill(vocabMask, -math.huge)
@@ -175,8 +176,12 @@ local function addGridDecodingConstraints(lvl, batchSize, realBeamSize, constrai
         if lvl > 1 then
           -- uplevelling
           -- unused constraints are only for uplevelling
-          local idx = gridConstraints[{i, lvl-1, j, k}]
-          if idx > 0 then constraintPenalty[{i, 1, j, idx}] = 0 end
+          local idxUsed = gridConstraints[{i, lvl-1, j, k}]
+          if idxUsed > 0 then constraintPenalty[{i, 1, j, idxUsed}] = 0 end
+
+          -- all constraints are forbidden for the same level
+          local idxAll = self.advancer.batch.constraints[batchIdx][k]
+          if idxAll > 0 then constraintPenalty[{i, 2, j, idxAll}] = -math.huge end
         end
       end
       -- EOS only when no more constraint
@@ -213,7 +218,7 @@ function BeamSearcher:_makeNewBeam(beams, scores)
 
     -- constraint Penalty on two layers (current and lower layer)
     constraintPenalty = torch.FloatTensor(batchSize, 2, self.realBeamSize, vocabSize):typeAs(scores)
-    addGridDecodingConstraints(1, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
+    self:addGridDecodingConstraints(1, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
     firstLevelScores = firstLevelScores:clone():add(constraintPenalty[{{},2,{},{}}]):contiguous()
   end
 
@@ -241,7 +246,7 @@ function BeamSearcher:_makeNewBeam(beams, scores)
         gridPrevScores = beams[t]:getScores():view(batchSize, self.gridHeight,  self.realBeamSize, -1):narrow(2, lvl-1, 2)
 
         local twoLevelScores = gridScores:narrow(2, lvl-1, 2)
-        addGridDecodingConstraints(lvl, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
+        self:addGridDecodingConstraints(lvl, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
         twoLevelScores:add(constraintPenalty)
 
         -- we operate on sentence x beam
@@ -320,10 +325,11 @@ function BeamSearcher:_retrieveHypothesis(beams, batchId, score, tok, bp, t)
   -- Check if the hypothesis respects the constraints
   local constraint_mismatch = false
   if self.advancer.batch.constraints then
-    local batchIdx = self.advancer.batch_idx or batchId
+    local batchIdx = self.advancer.batchIdx or batchId
     local constraints = self.advancer.batch.constraints[batchIdx]
     local constraintSize = self.advancer.batch.constraintSizes[batchIdx]
-    local vocabMask = self.vocabMask:clone()
+    local vocabMask
+    if self.vocabMask then vocabMask = self.vocabMask:clone() end
 
     for c=1,constraintSize do
       local cNum = constraints:eq(constraints[c]):sum()
@@ -332,11 +338,11 @@ function BeamSearcher:_retrieveHypothesis(beams, batchId, score, tok, bp, t)
         constraint_mismatch = true
         break
       end
-      vocabMask[constraints[c]] = 0
+      if vocabMask then vocabMask[constraints[c]] = 0 end
     end
 
     -- For placeholder-type constraints, we also need to check that no constraint that is not relevant for current source is used in the target
-    if (not constraint_mismatch) and vocabMask:eq(1):sum() ~= 0 then
+    if (not constraint_mismatch) and vocabMask and vocabMask:eq(1):sum() ~= 0 then
       for t=1,#tokens do
         if vocabMask[tokens[t]] ~= 0 then
 	  constraint_mismatch = true

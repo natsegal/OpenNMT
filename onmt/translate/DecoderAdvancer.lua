@@ -49,7 +49,7 @@ Returns:
 --]]
 function DecoderAdvancer:initBeam(use_constraints,idx)
 
-  self.batch_idx = idx
+  self.batchIdx = idx
   local batchSize = (idx and 1) or self.batch.size
 
   local tokens = onmt.utils.Cuda.convert(torch.IntTensor(batchSize)):fill(onmt.Constants.BOS)

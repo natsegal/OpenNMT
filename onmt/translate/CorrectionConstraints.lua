@@ -54,7 +54,7 @@ Parameters:
 Returns: modifies `scores`.
 
 ]]
-function CorrectionConstraints:maskScores(scores, constraintIds, constraintContent, remainingIds, beamSize) -- TODO : format parameters scores for the next token, current constraint state identifiers, current src token idx
+function CorrectionConstraints:maskScores(scores, constraintIds, constraintContent, remainingIds, beamSize)
 
   for c = 1, constraintIds:size(1) do
 

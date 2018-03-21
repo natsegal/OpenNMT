@@ -50,8 +50,8 @@ Returns:
 function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, vocabMask)
 
   self.nBest = nBest or 1
-  self.realBeamSize = beamSize or 1
-  assert(self.nBest <= self.realBeamSize, 'beam size must be greater or equal to the n-best list size')
+  self.beamSize = beamSize or 1
+  assert(self.nBest <= self.beamSize, 'beam size must be greater or equal to the n-best list size')
   self.preFilterFactor = preFilterFactor or 1
   self.keepInitial = keepInitial or false
   self.vocabMask = vocabMask
@@ -62,9 +62,6 @@ function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, voca
 
   -- Initialize the beam.
   beams[1] = self.advancer:initBeam()
-
-  self.gridHeight = (beams[1]:getState()[11] and beams[1]:getState()[11]:size(2)+1) or 1
-  self.beamSize = self.realBeamSize * self.gridHeight
 
   local remaining = beams[1]:getRemaining()
   if beams[1]:getTokens()[1]:size(1) ~= remaining * self.beamSize then
@@ -158,36 +155,6 @@ function BeamSearcher:_findKBest(beams, vocabSize, kBest, expandedScores, expand
 
 end
 
-local function addGridDecodingConstraints(lvl, batchSize, realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, vocabMask)
-  -- TODO: disable all of the placeholder in target vocabulary
-  constraintPenalty[{{}, 2, {}, {}}]:fill(0)
-  if lvl > 1 then
-    constraintPenalty[{{}, 1, {}, {}}]:fill(-math.huge)
-  end
-
-  for i = 1, batchSize do
-    for j = 1, realBeamSize do
-      if vocabMask then
-        constraintPenalty[{i, 2, j, {}}]:maskedFill(vocabMask, -math.huge)
-      end
-      for k = 1, gridConstraints:size(4) do
-        -- cannot use a constraint (not already used)
-        if lvl > 1 then
-          -- uplevelling
-          -- unused constraints are only for uplevelling
-          local idx = gridConstraints[{i, lvl-1, j, k}]
-          if idx > 0 then constraintPenalty[{i, 1, j, idx}] = 0 end
-        end
-      end
-      -- EOS only when no more constraint
-      if gridConstraintsSize[{i, lvl, j}] ~= lvl-1 then
-      -- TODO : we do not need GRID constraint sizes ?
-        constraintPenalty[{i, 2, j, onmt.Constants.EOS}] = -math.huge
-      end
-    end
-  end
-end
-
 -- Find the top beamSize hypotheses (satisfying filters).
 function BeamSearcher:_makeNewBeam(beams, scores)
 
@@ -196,87 +163,31 @@ function BeamSearcher:_makeNewBeam(beams, scores)
   local vocabSize = scores:size(2)
   local batchSize = beams[t]:getRemaining()
 
-  -- variable for constraint decoding (Grid Beam Search)
-  local constraints, constraintsSize = beams[t]:getConstraints()
-  local gridConstraints = constraints and constraints:view(batchSize, self.gridHeight, self.realBeamSize, -1)
-  local gridConstraintsSize = constraintsSize and constraintsSize:view(batchSize, self.gridHeight, self.realBeamSize)
-  local constraintPenalty
+  local remainingIds = beams[t]:remaining2Orig()
 
-  local gridScores = scores:view(batchSize, self.gridHeight,  self.realBeamSize, -1)
-  local gridPrevScores
+  local constraintIds, constraintContent = beams[t]:getConstraints()
 
-  local firstLevelScores = gridScores
-
-  if constraints then
-    firstLevelScores = gridScores:narrow(2, 1, 1)
-    gridPrevScores = beams[t]:getScores():view(batchSize, self.gridHeight,  self.realBeamSize, -1):narrow(2, 1, 1):contiguous()
-
-    -- constraint Penalty on two layers (current and lower layer)
-    constraintPenalty = torch.FloatTensor(batchSize, 2, self.realBeamSize, vocabSize):typeAs(scores)
-    addGridDecodingConstraints(1, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
-    firstLevelScores = firstLevelScores:clone():add(constraintPenalty[{{},2,{},{}}]):contiguous()
+  if constraintIds then
+    self.advancer.constraints:maskScores(scores, constraintIds, constraintContent, remainingIds, self.beamSize) -- TODO : return new constraint states for "grid" _findKBest
   end
 
   local expandedScores, expandedNormScores =
-      beams[t]:_expandScores(firstLevelScores, self.realBeamSize, gridPrevScores)
+      beams[t]:_expandScores(scores:view(batchSize, self.beamSize, -1))
 
   -- get kbest scores
+  -- TODO : keep best hypotheses for each constraint state ("grid")
   local newBeamScore, newBeamBackPointer, newBeamToken =
-      self:_findKBest(beams, vocabSize, self.realBeamSize, expandedScores, expandedNormScores)
+      self:_findKBest(beams, vocabSize, self.beamSize, expandedScores, expandedNormScores)
 
-  -- if there are constraints, we continue the decoding on the next level of the grid
-  if constraints then
-    local beamScore = onmt.utils.Cuda.convert(torch.Tensor(batchSize, self.gridHeight, self.realBeamSize))
-    local beamBackPointer = onmt.utils.Cuda.convert(torch.LongTensor(batchSize, self.gridHeight, self.realBeamSize))
-    local beamToken = onmt.utils.Cuda.convert(torch.LongTensor(batchSize, self.gridHeight, self.realBeamSize))
-
-    beamScore[{{}, 1, {}}]:copy(newBeamScore)
-    beamBackPointer[{{}, 1, {}}]:copy(newBeamBackPointer)
-    beamToken[{{}, 1, {}}]:copy(newBeamToken)
-
-    for lvl = 2, self.gridHeight do
-      -- We do not need to evaluate all the grid levels at the first time-steps.
-      if lvl <= t+1 then
-        gridScores = scores:clone():view(batchSize, self.gridHeight,  self.realBeamSize, -1)
-        gridPrevScores = beams[t]:getScores():view(batchSize, self.gridHeight,  self.realBeamSize, -1):narrow(2, lvl-1, 2)
-
-        local twoLevelScores = gridScores:narrow(2, lvl-1, 2)
-        addGridDecodingConstraints(lvl, batchSize, self.realBeamSize, constraintPenalty, gridConstraints, gridConstraintsSize, self.vocabMask)
-        twoLevelScores:add(constraintPenalty)
-
-        -- we operate on sentence x beam
-        expandedScores, expandedNormScores =
-            beams[t]:_expandScores(twoLevelScores:contiguous(), 2 * self.realBeamSize, gridPrevScores:contiguous())
-
-        -- get kbest scores
-        newBeamScore, newBeamBackPointer, newBeamToken = self:_findKBest(beams, vocabSize, self.realBeamSize, expandedScores, expandedNormScores)
-
-        -- we need to update newBeamBackPointer:
-        --   ID in the full structure is:     IDf = 1+ sID * G * B + gId * B + b
-        --   ID in the narrowed structure is: IDn = 1+ sID * 2 * B + (gID-lvl-2) * B + b
-        --   => sID = (IDn-1) /B /2
-        --   => IDf = IDn + (lvl-2)*B + sID*(G-2)
-
-        local sID = (newBeamBackPointer-1) / self.realBeamSize / 2
-        newBeamBackPointer:add((lvl-2)*self.realBeamSize)
-        sID:mul(self.gridHeight-2)
-        newBeamBackPointer:add(sID)
-      else
-        newBeamScore:fill(-math.huge)
-      end
-
-      beamScore[{{}, lvl, {}}]:copy(newBeamScore)
-      beamBackPointer[{{}, lvl, {}}]:copy(newBeamBackPointer)
-      beamToken[{{}, lvl, {}}]:copy(newBeamToken)
-    end
-
-    newBeamScore = beamScore
-    newBeamBackPointer = beamBackPointer
-    newBeamToken = beamToken
-  end
 
   local newBeam = beams[t]:_nextBeam(newBeamToken:view(-1), newBeamScore, newBeamBackPointer:view(batchSize, -1),
-                                     self.beamSize, constraints)
+                                     self.beamSize, self.advancer.constraints) -- , newConstraints)
+
+  if constraintIds then
+    local newConstraintIds, newConstraintContent = newBeam:getConstraints()
+    self.advancer.constraints:updateConstraints(newBeamToken:view(-1), newConstraintIds, newConstraintContent, remainingIds, self.beamSize)
+  end
+
   beams[t + 1] = newBeam
 
   -- Cleanup unused memory.

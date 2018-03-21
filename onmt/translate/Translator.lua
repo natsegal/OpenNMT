@@ -42,7 +42,12 @@ local options = {
       does not exist in the table) then it will copy the source token]]},
   {
     '-replace_unk_tagged', false,
-    [[The same as -replace_unk, but wrap the replaced token in ｟unk:xxxxx｠ if it is not found in the phrase table.]]},
+    [[The same as -replace_unk, but wrap the replaced token in ｟unk:xxxxx｠ if it is not found in the phrase table.]]
+  },
+  {
+    '-corr_constraints', false,
+    [[Force the beam search to apply correction tags consistently and follow the source if no correction.]]
+  },
   {
     '-lexical_constraints', false,
     [[Force the beam search to apply the translations from the phrase table.]]
@@ -322,6 +327,15 @@ function Translator:buildData(src, gold)
                        onmt.utils.Features.generateSource(self.dicts.src.features, src[b].features))
         end
 
+        -- encode src using target dictionary
+        -- src tokens will be used as constraints on target generation
+        if self.args.corr_constraints then
+          if self.dicts.tgt then
+            table.insert(srcData.constraints,
+                         self.dicts.tgt.words:convertToIdx(src[b].words, onmt.Constants.UNK_WORD))
+          end
+        end
+
         if self.args.placeholder_constraints then
           local c = {}
           for ph,_ in pairs(src[b].placeholders) do
@@ -449,6 +463,15 @@ function Translator:translateBatch(batch)
     goldScore = self.model.models.decoder:computeScore(batch, decInitStates, context)
   end
 
+  -- Decoding constraints initialization.
+  local constraints
+  if self.args.corr_constraints then
+    local tags = {"<ins>","</ins>","<del>","</del>"} -- TODO : we might want to specify other list of tags
+    tags = self.dicts.tgt.words:convertToIdx(tags, onmt.Constants.UNK_WORD)
+    constraints = onmt.translate.CorrectionConstraints.new(batch.constraints, tags)
+  -- elseif then -- TODO : lexical and placeholder constraints
+  end
+
   -- Specify how to go one step forward.
   local advancer = onmt.translate.DecoderAdvancer.new(self.model.models.decoder,
                                                       batch,
@@ -461,7 +484,8 @@ function Translator:translateBatch(batch)
                                                       self.dicts,
                                                       self.args.length_norm,
                                                       self.args.coverage_norm,
-                                                      self.args.eos_norm)
+                                                      self.args.eos_norm,
+                                                      constraints)
 
   -- Save memory by only keeping track of necessary elements in the states.
   -- Attentions are at index 4 in the states defined in onmt.translate.DecoderAdvancer.

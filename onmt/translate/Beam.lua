@@ -181,7 +181,7 @@ Parameters:
   start with `beamSize` hypotheses per sequence. [`token:size(1)`]
 
 --]]
-function Beam:__init(token, state, params, batchSize, updateConstraints)
+function Beam:__init(token, state, params, batchSize)
   self._remaining = batchSize or token:size(1)
 
   if torch.type(token) == 'table' then
@@ -190,19 +190,6 @@ function Beam:__init(token, state, params, batchSize, updateConstraints)
     self._tokens = { token }
   end
   self._state = state
-
-  if updateConstraints and self._state[11] then
-    -- TODO: can take only last value of timestep t
-    for t = 1, self._tokens[#self._tokens]:size(1) do
-      local tok = self._tokens[#self._tokens][t]
-      for c = 1, self._state[11]:size(2) do
-        if self._state[11][t][c] == tok then
-          self._state[11][t][c] = 0
-          break
-        end
-      end
-    end
-  end
 
   self._params = {}
   if params then
@@ -282,7 +269,7 @@ function Beam:getRemaining()
   return self._remaining
 end
 
---[[ Returns possible constraint and constraint number - if any ]]
+--[[ Returns constraint state Ids and constraint contents - if any ]]
 function Beam:getConstraints()
   return self._state[11], self._state[12]
 end
@@ -392,21 +379,19 @@ end
 
 -- Given new scores, combine that with the previous total scores and find the
 -- top K hypotheses to form the next beam.
-function Beam:_expandScores(scores, beamSize, prevScores)
-  prevScores = prevScores or self._scores
-  local scoreSize = scores:size()
-  local remaining = scoreSize[1]
-  local vocabSize = scoreSize[scoreSize:size(1)]
+function Beam:_expandScores(scores)
+  local remaining = scores:size(1)
+  local beamSize = scores:size(2)
+  local vocabSize = scores:size(3)
 
   if #self._state == 8 and self._params.eos_norm > 0 then
     local EOS_penalty = torch.div(self._state[6]:view(remaining, beamSize), self._step/self._params.eos_norm)
     scores:view(remaining, beamSize, -1)[{{},{},onmt.Constants.EOS}]:cmul(EOS_penalty)
   end
 
-  prevScores = prevScores:typeAs(scores)
   local expandedScores = scores
                           :view(remaining, beamSize, -1)
-                          :add(prevScores
+                          :add(self._scores:typeAs(scores)
                                       :view(remaining, beamSize, 1)
                                       :expand(remaining, beamSize, vocabSize))
 
@@ -416,13 +401,13 @@ end
 
 -- Create a new beam given new token, scores, backpointer.
 -- We can also update used lexical constraints
-function Beam:_nextBeam(token, scores, backPointer, beamSize, updateConstraints)
+function Beam:_nextBeam(token, scores, backPointer, beamSize)
   local remaining = math.floor(token:size(1) / beamSize)
   local params = self._params
   local newBeam = Beam.new(self:_nextTokens(token, backPointer, beamSize),
                            self:_nextState(backPointer, beamSize),
                            params,
-                           remaining, updateConstraints)
+                           remaining)
   newBeam:setScores(scores)
   newBeam:setBackPointer(backPointer)
   newBeam._prevBeam = self

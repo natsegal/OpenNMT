@@ -20,7 +20,7 @@ Parameters:
 --]]
 function DecoderAdvancer:__init(decoder, batch, context, max_sent_length, max_num_unks, decStates,
                                 lmModel, lmStates, lmContext, lm_weight,
-                                dicts, length_norm, coverage_norm, eos_norm)
+                                dicts, length_norm, coverage_norm, eos_norm, constraints)
   self.decoder = decoder
   self.batch = batch
   self.context = context
@@ -38,6 +38,9 @@ function DecoderAdvancer:__init(decoder, batch, context, max_sent_length, max_nu
   self.lmContext = lmContext
   self.lm_weight = lm_weight
   self.dicts = dicts
+
+  -- Decoding constraint object defining what type of constraints we use.
+  self.constraints = constraints
 end
 
 --[[Returns an initial beam.
@@ -71,8 +74,18 @@ function DecoderAdvancer:initBeam()
     end
   end
 
+  -- Constraint IDs are the possible constraint states
+  -- Constraint content is any additional information needed for constraint state initialization and update
+  -- Ex : 
+  --    * for correction constraints, content is the current src position
+  --    * for lexical constraints, list of remaining constraint tokens not yet used
+  local constraintIds, constraintContent
+  if self.constraints then
+    constraintIds, constraintContent  = self.constraints:initConstraints(self.batch.size)
+  end
+
   -- Define state to be { decoder states, decoder output, context,
-  -- attentions, features, sourceSizes, step, , lmStates, lmContext, lexical constraints, lexical constraintSizes }.
+  -- attentions, features, sourceSizes, step, , lmStates, lmContext, decoding constraint IDs, decoding constraint content }.
   local state = { self.decStates,             -- idx 1  : decoder states
                   nil,                        -- idx 2  : decoder output
                   self.context,               -- idx 3  : context
@@ -83,8 +96,8 @@ function DecoderAdvancer:initBeam()
                   attnProba,                  -- idx 8  : cumulated attention probablities
                   self.lmStates,              -- idx 9  : lmStates
                   self.lmContext,             -- idx 10 : lmContext
-                  self.batch.constraints,     -- idx 11 : lexical constraints remaining to apply to this node
-                  self.batch.constraintSizes  -- idx 12 : lexical constraints sizes
+                  constraintIds,              -- idx 11 : constraint state IDs
+                  constraintContent           -- idx 12 : additional information used for constraint state initialization and update
   }
 
   local params = {}
@@ -103,7 +116,7 @@ Parameters:
 ]]
 function DecoderAdvancer:update(beam)
   local state = beam:getState()
-  local decStates, decOut, context, _, features, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraints, constraintSizes
+  local decStates, decOut, context, _, features, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraintIds, constraintContent
     = table.unpack(state, 1, 12)
 
   local tokens = beam:getTokens()
@@ -139,7 +152,7 @@ function DecoderAdvancer:update(beam)
     cumAttnProba = cumAttnProba:add(attention)
   end
 
-  local nextState = {decStates, decOut, context, attention, nil, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraints, constraintSizes}
+  local nextState = {decStates, decOut, context, attention, nil, sourceSizes, t, cumAttnProba, lmStates, lmContext, constraintIds, constraintContent}
   beam:setState(nextState)
 end
 
